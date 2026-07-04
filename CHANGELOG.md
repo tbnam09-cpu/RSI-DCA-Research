@@ -1,14 +1,14 @@
 # Changelog
 
-## v1.10.001 - 2026-06-17
+## v1.0.0 - Baseline
+- Fixed RSI signal detection.
+- Fixed BarsSinceLastOrder().
+- Fixed LastBuyPrice().
+- Buy only.
+- DCA Distance = 26 pips.
+- Min Bars = 18.
+- LotStep = +0.02.
+- Basket TP enabled.
 
-### Added
-- Repository created
-- Project initialized
-- Research Framework started
-
-### Changed
-- None
-
-### Fixed
-- None
+Status:
+Baseline used for all future research.
