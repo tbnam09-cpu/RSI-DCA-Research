@@ -37,6 +37,8 @@ double   LowestPriceReached = DBL_MAX;
 
 int      MaxOrdersCurrentCycle = 0;
 
+double TotalLotsCurrentCycle = 0.0;
+
 double PipSize(){ return (_Digits==3 || _Digits==5) ? _Point*10 : _Point; }
 
 int OnInit()
@@ -220,12 +222,55 @@ void ResetCycleStats()
    LowestPriceReached = DBL_MAX;
 
    MaxOrdersCurrentCycle = 0;
+   
+   TotalLotsCurrentCycle = 0.0;
+}
+string FormatDuration(datetime startTime)
+{
+   if(startTime == 0)
+      return "0m";
+
+   int sec = (int)(TimeCurrent() - startTime);
+
+   int days = sec / 86400;
+   int hours = (sec % 86400) / 3600;
+   int minutes = (sec % 3600) / 60;
+
+   return StringFormat("%dd %02dh %02dm", days, hours, minutes);
+}
+double CalculateTotalLots()
+{
+   double totalLots = 0.0;
+
+   for(int i = PositionsTotal() - 1; i >= 0; i--)
+   {
+      ulong ticket = PositionGetTicket(i);
+
+      if(ticket == 0)
+         continue;
+
+      if(!PositionSelectByTicket(ticket))
+         continue;
+
+      if(PositionGetString(POSITION_SYMBOL) != _Symbol)
+         continue;
+
+      if(PositionGetInteger(POSITION_MAGIC) != MagicNumber)
+         continue;
+
+      if(PositionGetInteger(POSITION_TYPE) != POSITION_TYPE_BUY)
+         continue;
+
+      totalLots += PositionGetDouble(POSITION_VOLUME);
+   }
+
+   return totalLots;
 }
 void OnTick()
 {
    double Ask=SymbolInfoDouble(_Symbol,SYMBOL_ASK);
    double Bid=SymbolInfoDouble(_Symbol,SYMBOL_BID);
-
+   double currentProfit = BasketProfit();
    double spread=(Ask-Bid)/_Point;
    if(spread>MaxSpreadPoints) return;
 
@@ -234,10 +279,50 @@ void OnTick()
    LastBar=bar;
 
    int total=CountBuys();
-
-   if(total>0 && BasketProfit()>=BasketTP(total))
+   //==================================================
+   // Update Cycle Statistics
+   //==================================================
+   
+   if(total > 0)
+   { 
+      // Bắt đầu một Cycle mới
+      if(CycleStartTime == 0)
+      {
+         CycleStartTime = TimeCurrent();
+   
+         WorstFloating = currentProfit;
+   
+         LowestPriceReached = Bid;
+   
+         MaxOrdersCurrentCycle = total;
+      }
+   
+      // Floating thấp nhất
+      if(currentProfit < WorstFloating)
+         WorstFloating = currentProfit;
+   
+      // Giá thấp nhất
+      if(Bid < LowestPriceReached)
+         LowestPriceReached = Bid;
+   
+      // Số lệnh lớn nhất
+      if(total > MaxOrdersCurrentCycle)
+         MaxOrdersCurrentCycle = total;
+         
+      TotalLotsCurrentCycle = CalculateTotalLots();   
+   }
+   if(total>0 && currentProfit>=BasketTP(total))
    {
+      Print("========================================");
+      Print("Cycle #", CycleID);
+      Print("Orders = ", MaxOrdersCurrentCycle);
+      Print("Worst Floating = ", DoubleToString(WorstFloating,2));
+      Print("Lowest Price = ", DoubleToString(LowestPriceReached,_Digits));
+      Print("Basket Profit = ", DoubleToString(currentProfit,2));
+      Print("Duration = ", FormatDuration(CycleStartTime));
+      Print("========================================");
       CloseAll();
+      ResetCycleStats();
       return;
    }
 
