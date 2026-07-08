@@ -1,4 +1,4 @@
-﻿#property strict
+#property strict
 #include <Trade/Trade.mqh>
 CTrade trade;
 
@@ -38,6 +38,10 @@ double   LowestPriceReached = DBL_MAX;
 int      MaxOrdersCurrentCycle = 0;
 
 double TotalLotsCurrentCycle = 0.0;
+
+double FirstEntryPrice = 0.0;
+
+double MAEPips = 0.0;
 
 double PipSize(){ return (_Digits==3 || _Digits==5) ? _Point*10 : _Point; }
 
@@ -224,6 +228,10 @@ void ResetCycleStats()
    MaxOrdersCurrentCycle = 0;
    
    TotalLotsCurrentCycle = 0.0;
+   
+   FirstEntryPrice = 0.0;
+   
+   MAEPips = 0.0;
 }
 string FormatDuration(datetime startTime)
 {
@@ -266,6 +274,41 @@ double CalculateTotalLots()
 
    return totalLots;
 }
+double GetFirstEntryPrice()
+{
+   datetime oldestTime = LONG_MAX;
+   double firstPrice = 0.0;
+
+   for(int i = PositionsTotal() - 1; i >= 0; i--)
+   {
+      ulong ticket = PositionGetTicket(i);
+
+      if(ticket == 0)
+         continue;
+
+      if(!PositionSelectByTicket(ticket))
+         continue;
+
+      if(PositionGetString(POSITION_SYMBOL) != _Symbol)
+         continue;
+
+      if(PositionGetInteger(POSITION_MAGIC) != MagicNumber)
+         continue;
+
+      if(PositionGetInteger(POSITION_TYPE) != POSITION_TYPE_BUY)
+         continue;
+
+      datetime openTime = (datetime)PositionGetInteger(POSITION_TIME);
+
+      if(openTime < oldestTime)
+      {
+         oldestTime = openTime;
+         firstPrice = PositionGetDouble(POSITION_PRICE_OPEN);
+      }
+   }
+
+   return firstPrice;
+}
 void OnTick()
 {
    double Ask=SymbolInfoDouble(_Symbol,SYMBOL_ASK);
@@ -284,7 +327,9 @@ void OnTick()
    //==================================================
    
    if(total > 0)
-   { 
+   {
+      if(FirstEntryPrice == 0.0)
+         FirstEntryPrice = GetFirstEntryPrice();
       // Bắt đầu một Cycle mới
       if(CycleStartTime == 0)
       {
@@ -304,7 +349,13 @@ void OnTick()
       // Giá thấp nhất
       if(Bid < LowestPriceReached)
          LowestPriceReached = Bid;
-   
+      if(FirstEntryPrice > 0.0)
+      {
+          double currentMAE = (FirstEntryPrice - LowestPriceReached) / PipSize();
+      
+          if(currentMAE > MAEPips)
+              MAEPips = currentMAE;
+      }
       // Số lệnh lớn nhất
       if(total > MaxOrdersCurrentCycle)
          MaxOrdersCurrentCycle = total;
@@ -317,7 +368,9 @@ void OnTick()
       Print("Cycle #", CycleID);
       Print("Orders = ", MaxOrdersCurrentCycle);
       Print("Worst Floating = ", DoubleToString(WorstFloating,2));
+      Print("First Entry = ", DoubleToString(FirstEntryPrice,_Digits));
       Print("Lowest Price = ", DoubleToString(LowestPriceReached,_Digits));
+      Print("MAE = ", DoubleToString(MAEPips,1), " pip");
       Print("Basket Profit = ", DoubleToString(currentProfit,2));
       Print("Duration = ", FormatDuration(CycleStartTime));
       Print("========================================");
